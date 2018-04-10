@@ -3,6 +3,7 @@
 package main
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -87,13 +88,20 @@ func (c *Chain) ReadState(fileName string) (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	dec := json.NewDecoder(fin)
+	gzstream, err := gzip.NewReader(fin)
+	if err != nil {
+		return err
+	}
+	defer gzstream.Close()
+
+	dec := json.NewDecoder(gzstream)
 	err = dec.Decode(c)
 	return nil
 }
 
 // WriteState writes to a json-formatted state file.
 func (c *Chain) WriteState(fileName string) (err error) {
+	// remember that defers are LIFO
 	fout, err := os.Create(fileName)
 	if err != nil {
 		return err
@@ -103,7 +111,11 @@ func (c *Chain) WriteState(fileName string) (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	enc := json.NewEncoder(fout)
+	gzstream := gzip.NewWriter(fout)
+	defer gzstream.Close()
+
+	enc := json.NewEncoder(gzstream)
 	err = enc.Encode(c)
+
 	return nil
 }

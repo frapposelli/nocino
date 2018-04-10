@@ -28,7 +28,7 @@ func init() {
 
 	flag.IntVar(&numw, "numw", 25, "maximum number of words for the markov chain")
 	flag.IntVar(&plen, "plen", 2, "chain prefix length")
-	flag.StringVar(&state, "state", "nocino.state", "state file for nocino")
+	flag.StringVar(&state, "state", "nocino.state.gz", "state file for nocino")
 	flag.StringVar(&tgtoken, "token", "", "telegram bot token")
 }
 
