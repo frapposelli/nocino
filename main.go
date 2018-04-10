@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jamiealquiza/envy"
 	"gopkg.in/telegram-bot-api.v4"
 )
 
@@ -32,6 +33,7 @@ func init() {
 }
 
 func main() {
+	envy.Parse("NOCINO")
 	flag.Parse()
 	bot, err := tgbotapi.NewBotAPI(tgtoken)
 	if err != nil {

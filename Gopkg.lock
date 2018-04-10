@@ -2,6 +2,12 @@
 
 
 [[projects]]
+  name = "github.com/jamiealquiza/envy"
+  packages = ["."]
+  revision = "0bbd0e6a316f4aedb2fcb3eaaabd3e89d88d606f"
+  version = "v1.0.0"
+
+[[projects]]
   name = "github.com/technoweenie/multipartstreamer"
   packages = ["."]
   revision = "a90a01d73ae432e2611d178c18367fbaa13e0154"
@@ -16,6 +22,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "4b9443e1dfa05d9e3b47f80f1a69cefe00fa167704b0bf9a05d86796a30df851"
+  inputs-digest = "3bb90c910395776fad6e1c95d5cac4add8b102630fa0bd0372b40e18a868a2c1"
   solver-name = "gps-cdcl"
   solver-version = 1
