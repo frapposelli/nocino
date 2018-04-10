@@ -76,7 +76,9 @@ func main() {
 			// If message is not empty, add to the chain and save to file
 			markov.AddChain(strings.TrimPrefix(update.Message.Text, botUsername))
 			go func() {
+				t := time.Now().UTC()
 				markov.WriteState(state)
+				log.Printf("[DEBUG] state save goroutine ended in %s", time.Since(t).String())
 			}()
 		}
 	}
