@@ -6,6 +6,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ var (
 	state          string
 	botUsername    string
 	genText        string
+	trustedIDs     string
 	answerRequired bool
 	elapsed        time.Duration
 	checkpoint     time.Duration
@@ -33,6 +35,7 @@ func init() {
 	flag.IntVar(&plen, "plen", 2, "chain prefix length")
 	flag.StringVar(&state, "state", "nocino.state.gz", "state file for nocino")
 	flag.StringVar(&tgtoken, "token", "", "telegram bot token")
+	flag.StringVar(&trustedIDs, "trustedids", "", "trusted ids separated by comma")
 	flag.DurationVar(&checkpoint, "checkpoint", 60*time.Second, "checkpoint interval for state file in seconds")
 }
 
@@ -60,6 +63,15 @@ func main() {
 
 	log.Printf("Loaded previous state from '%s' (%d suffixes).", state, len(markov.Chain))
 
+	trustedMap := make(map[int]bool)
+	if trustedIDs != "" {
+		ids := strings.Split(trustedIDs, ",")
+		for i := 0; i < len(ids); i += 1 {
+			j, _ := strconv.Atoi(ids[i])
+			trustedMap[j] = true
+		}
+	}
+
 	// state file save ticker
 	log.Printf("Starting state save ticker with %s interval", checkpoint.String())
 	ticker := time.NewTicker(checkpoint)
@@ -79,6 +91,18 @@ func main() {
 			answerRequired = false
 			if update.Message == nil || update.Message.Text == "" {
 				return
+			}
+
+			// if it's a private message, check against a list of ID
+			if update.Message.Chat.Type == "private" {
+				if trustedMap[update.Message.From.ID] {
+					log.Printf("[%s] Authorized private chat, asking: '%s'", update.Message.From.UserName, update.Message.Text)
+					answerRequired = true
+				} else {
+					// if it's not in the authorized list, do not log
+					log.Printf("[%s] Unauthorized private chat, asking: '%s'", update.Message.From.UserName, update.Message.Text)
+					return
+				}
 			}
 
 			// tokenize message
