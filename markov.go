@@ -6,7 +6,6 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
-	"log"
 	"math/rand"
 	"os"
 	"strings"
@@ -58,7 +57,7 @@ func (c *Chain) AddChain(in string) (int, error) {
 }
 
 // GenerateChain generates a markov chain.
-func (c *Chain) GenerateChain(n int, seed string) string {
+func (c *Chain) GenerateChain(n int, seed string) (string, time.Duration) {
 	t := time.Now().UTC()
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -73,8 +72,7 @@ func (c *Chain) GenerateChain(n int, seed string) string {
 		words = append(words, next)
 		p.Shift(next)
 	}
-	log.Printf("[DEBUG] markov chain generated in %s", time.Since(t).String())
-	return strings.Join(words, " ")
+	return strings.Join(words, " "), time.Since(t)
 }
 
 // ReadState reads from a json-formatted state file.

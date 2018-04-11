@@ -14,13 +14,15 @@ import (
 )
 
 var (
-	numw        int
-	plen        int
-	tgtoken     string
-	state       string
-	botUsername string
-	genText     string
-	markov      *Chain
+	numw           int
+	plen           int
+	tgtoken        string
+	state          string
+	botUsername    string
+	genText        string
+	answerRequired bool
+	elapsed        time.Duration
+	markov         *Chain
 )
 
 func init() {
@@ -58,35 +60,44 @@ func main() {
 
 	// feedback loop
 	for update := range updates {
-		if update.Message == nil {
+		answerRequired = false
+		if update.Message == nil || update.Message.Text == "" {
 			continue
 		}
 
 		// tokenize message
 		tokens := strings.Split(update.Message.Text, " ")
 
-		if update.Message.Text != "" {
-			// If talking to the bot, reply with a chain.
-			if strings.ToLower(tokens[0]) == strings.ToLower(botUsername) {
-				log.Printf("[%s] Asking: %s", update.Message.From.UserName, update.Message.Text)
-				genText = markov.GenerateChain(numw, update.Message.Text)
-				log.Printf("[%s] Sending response: %s", update.Message.From.UserName, genText)
-				msg := tgbotapi.NewMessage(update.Message.Chat.ID, genText)
-				msg.ReplyToMessageID = update.Message.MessageID
-				bot.Send(msg)
-				// pop the first element
-				tokens = tokens[1:]
-			}
-
-			// add message to chain
-			markov.AddChain(strings.Join(tokens, " "))
-
-			// now go and save
-			go func() {
-				t := time.Now().UTC()
-				markov.WriteState(state)
-				log.Printf("[DEBUG] state save goroutine ended in %s", time.Since(t).String())
-			}()
+		// if it's a reply, check if it's to us, answer back if necessary.
+		if update.Message.ReplyToMessage != nil && update.Message.ReplyToMessage.From.UserName == bot.Self.UserName {
+			log.Printf("[%s] Replied to us, asking: '%s'", update.Message.From.UserName, update.Message.Text)
+			answerRequired = true
 		}
+
+		// check if we're being mentioned, answer back if necessary.
+		if strings.ToLower(tokens[0]) == strings.ToLower(botUsername) {
+			log.Printf("[%s] Mentioned us, asking: '%s'", update.Message.From.UserName, update.Message.Text)
+			// pop the first element
+			tokens = tokens[1:]
+			answerRequired = true
+		}
+
+		if answerRequired {
+			genText, elapsed = markov.GenerateChain(numw, update.Message.Text)
+			log.Printf("[%s] Sending response: '%s' (generated in %s)", update.Message.From.UserName, genText, elapsed.String())
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, genText)
+			msg.ReplyToMessageID = update.Message.MessageID
+			bot.Send(msg)
+		}
+
+		// add message to chain
+		markov.AddChain(strings.Join(tokens, " "))
+
+		// now go and save
+		go func() {
+			t := time.Now().UTC()
+			markov.WriteState(state)
+			log.Printf("[DEBUG] state save goroutine ended in %s", time.Since(t).String())
+		}()
 	}
 }
