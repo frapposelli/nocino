@@ -22,6 +22,7 @@ var (
 	genText        string
 	answerRequired bool
 	elapsed        time.Duration
+	checkpoint     time.Duration
 	markov         *Chain
 )
 
@@ -32,6 +33,7 @@ func init() {
 	flag.IntVar(&plen, "plen", 2, "chain prefix length")
 	flag.StringVar(&state, "state", "nocino.state.gz", "state file for nocino")
 	flag.StringVar(&tgtoken, "token", "", "telegram bot token")
+	flag.DurationVar(&checkpoint, "checkpoint", 60*time.Second, "checkpoint interval for state file in seconds")
 }
 
 func main() {
@@ -57,6 +59,19 @@ func main() {
 	}
 
 	log.Printf("Loaded previous state from '%s' (%d suffixes).", state, len(markov.Chain))
+
+	// state file save ticker
+	log.Printf("Starting state save ticker with %s interval", checkpoint.String())
+	ticker := time.NewTicker(checkpoint)
+	go func() {
+		for tick := range ticker.C {
+			if err := markov.WriteState(state); err != nil {
+				log.Printf("[state] checkpoint failed: %s (in %s)", err.Error(), time.Since(tick).String())
+			} else {
+				log.Printf("[state] checkpoint completed, %d suffixes in chain (in %s)", len(markov.Chain), time.Since(tick).String())
+			}
+		}
+	}()
 
 	// feedback loop
 	for update := range updates {
@@ -91,13 +106,8 @@ func main() {
 		}
 
 		// add message to chain
-		markov.AddChain(strings.Join(tokens, " "))
-
-		// now go and save
 		go func() {
-			t := time.Now().UTC()
-			markov.WriteState(state)
-			log.Printf("[DEBUG] state save goroutine ended in %s", time.Since(t).String())
+			markov.AddChain(strings.Join(tokens, " "))
 		}()
 	}
 }
