@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Prefix []string
@@ -58,8 +59,7 @@ func (c *Chain) AddChain(in string) (int, error) {
 
 // GenerateChain generates a markov chain.
 func (c *Chain) GenerateChain(n int, seed string) string {
-	log.Println("[DEBUG] Entering markov algorithm...")
-	defer log.Println("[DEBUG] Exiting markov algorithm...")
+	t := time.Now().UTC()
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	p := make(Prefix, c.prefixLen)
@@ -70,10 +70,10 @@ func (c *Chain) GenerateChain(n int, seed string) string {
 			break
 		}
 		next := choices[rand.Intn(len(choices))]
-		log.Printf("[DEBUG] [iteration %d] [prefix: %s] Selecting suffix: %s", i, p.String(), next)
 		words = append(words, next)
 		p.Shift(next)
 	}
+	log.Printf("[DEBUG] markov chain generated in %s", time.Since(t).String())
 	return strings.Join(words, " ")
 }
 

@@ -62,19 +62,26 @@ func main() {
 			continue
 		}
 
-		// If talking to the bot, reply with a chain.
-		if strings.HasPrefix(update.Message.Text, botUsername) {
-			log.Printf("[%s] Asking: %s", update.Message.From.UserName, update.Message.Text)
-			genText = markov.GenerateChain(numw, update.Message.Text)
-			log.Printf("[%s] Sending response: %s", update.Message.From.UserName, genText)
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID, genText)
-			msg.ReplyToMessageID = update.Message.MessageID
-			bot.Send(msg)
-		}
+		// tokenize message
+		tokens := strings.Split(update.Message.Text, " ")
 
 		if update.Message.Text != "" {
-			// If message is not empty, add to the chain and save to file
-			markov.AddChain(strings.TrimPrefix(update.Message.Text, botUsername))
+			// If talking to the bot, reply with a chain.
+			if strings.ToLower(tokens[0]) == strings.ToLower(botUsername) {
+				log.Printf("[%s] Asking: %s", update.Message.From.UserName, update.Message.Text)
+				genText = markov.GenerateChain(numw, update.Message.Text)
+				log.Printf("[%s] Sending response: %s", update.Message.From.UserName, genText)
+				msg := tgbotapi.NewMessage(update.Message.Chat.ID, genText)
+				msg.ReplyToMessageID = update.Message.MessageID
+				bot.Send(msg)
+				// pop the first element
+				tokens = tokens[1:]
+			}
+
+			// add message to chain
+			markov.AddChain(strings.Join(tokens, " "))
+
+			// now go and save
 			go func() {
 				t := time.Now().UTC()
 				markov.WriteState(state)
