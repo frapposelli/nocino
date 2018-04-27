@@ -2,26 +2,25 @@
 
 
 [[projects]]
-  name = "github.com/jamiealquiza/envy"
-  packages = ["."]
-  revision = "0bbd0e6a316f4aedb2fcb3eaaabd3e89d88d606f"
-  version = "v1.0.0"
+  name = "github.com/aws/aws-sdk-go"
+  packages = ["aws","aws/awserr","aws/awsutil","aws/client","aws/client/metadata","aws/corehandlers","aws/credentials","aws/credentials/ec2rolecreds","aws/credentials/endpointcreds","aws/credentials/stscreds","aws/defaults","aws/ec2metadata","aws/endpoints","aws/request","aws/session","aws/signer/v4","internal/sdkio","internal/sdkrand","internal/shareddefaults","private/protocol","private/protocol/json/jsonutil","private/protocol/jsonrpc","private/protocol/query","private/protocol/query/queryutil","private/protocol/rest","private/protocol/xml/xmlutil","service/dynamodb","service/dynamodb/dynamodbattribute","service/sts"]
+  revision = "cb873de7862ba08c63e82f37ffebc5ba02d87d26"
+  version = "v1.13.38"
 
 [[projects]]
-  name = "github.com/technoweenie/multipartstreamer"
+  name = "github.com/go-ini/ini"
   packages = ["."]
-  revision = "a90a01d73ae432e2611d178c18367fbaa13e0154"
-  version = "v1.0.1"
+  revision = "6529cf7c58879c08d927016dde4477f18a0634cb"
+  version = "v1.36.0"
 
 [[projects]]
-  name = "gopkg.in/telegram-bot-api.v4"
+  name = "github.com/jmespath/go-jmespath"
   packages = ["."]
-  revision = "0e0af0c480ea98e982d5f4d45fb39577c6ab1e3e"
-  version = "v4.6.2"
+  revision = "0b12d6b5"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "3bb90c910395776fad6e1c95d5cac4add8b102630fa0bd0372b40e18a868a2c1"
+  inputs-digest = "8199e7ef888896ce36c27a21e6d7db7270cf0bb68210ffea02e8c5eb3d64b9dc"
   solver-name = "gps-cdcl"
   solver-version = 1

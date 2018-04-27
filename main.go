@@ -1,137 +1,142 @@
 package main
 
-import (
-	"flag"
-	"fmt"
-	"log"
-	"math/rand"
-	"os"
-	"strconv"
-	"strings"
-	"time"
+// import (
+// 	"flag"
+// 	"fmt"
+// 	"log"
+// 	"math/rand"
+// 	"os"
+// 	"strconv"
+// 	"strings"
+// 	"time"
 
-	"github.com/jamiealquiza/envy"
-	"gopkg.in/telegram-bot-api.v4"
-)
+// 	"github.com/jamiealquiza/envy"
+// 	"gopkg.in/telegram-bot-api.v4"
 
-var (
-	numw           int
-	plen           int
-	tgtoken        string
-	state          string
-	botUsername    string
-	genText        string
-	trustedIDs     string
-	answerRequired bool
-	elapsed        time.Duration
-	checkpoint     time.Duration
-	markov         *Chain
-)
+// 	"github.com/aws/aws-lambda-go/events"
+// 	"github.com/aws/aws-lambda-go/lambda"
+// )
 
-func init() {
-	rand.Seed(time.Now().UTC().UnixNano())
+// var (
+// 	numw           int
+// 	plen           int
+// 	tgtoken        string
+// 	state          string
+// 	botUsername    string
+// 	genText        string
+// 	trustedIDs     string
+// 	answerRequired bool
+// 	elapsed        time.Duration
+// 	checkpoint     time.Duration
+// 	markov         *Chain
 
-	flag.IntVar(&numw, "numw", 25, "maximum number of words for the markov chain")
-	flag.IntVar(&plen, "plen", 2, "chain prefix length")
-	flag.StringVar(&state, "state", "nocino.state.gz", "state file for nocino")
-	flag.StringVar(&tgtoken, "token", "", "telegram bot token")
-	flag.StringVar(&trustedIDs, "trustedids", "", "trusted ids separated by comma")
-	flag.DurationVar(&checkpoint, "checkpoint", 60*time.Second, "checkpoint interval for state file in seconds")
-}
+// 	ErrNameNotProvided = errors.New("no name was provided in the HTTP body")
+// )
 
-func main() {
-	envy.Parse("NOCINO")
-	flag.Parse()
-	bot, err := tgbotapi.NewBotAPI(tgtoken)
-	if err != nil {
-		log.Printf("Cannot log in, exiting...")
-		os.Exit(1)
-	}
-	botUsername = fmt.Sprintf("@%s", bot.Self.UserName)
-	log.Printf("Authorized on account %s", botUsername)
+// func init() {
+// 	rand.Seed(time.Now().UTC().UnixNano())
 
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
-	updates, err := bot.GetUpdatesChan(u)
+// 	flag.IntVar(&numw, "numw", 25, "maximum number of words for the markov chain")
+// 	flag.IntVar(&plen, "plen", 2, "chain prefix length")
+// 	flag.StringVar(&state, "state", "nocino.state.gz", "state file for nocino")
+// 	flag.StringVar(&tgtoken, "token", "", "telegram bot token")
+// 	flag.StringVar(&trustedIDs, "trustedids", "", "trusted ids separated by comma")
+// 	flag.DurationVar(&checkpoint, "checkpoint", 60*time.Second, "checkpoint interval for state file in seconds")
+// }
 
-	markov = NewChain(plen)
+// func main() {
+// 	envy.Parse("NOCINO")
+// 	flag.Parse()
+// 	bot, err := tgbotapi.NewBotAPI(tgtoken)
+// 	if err != nil {
+// 		log.Printf("Cannot log in, exiting...")
+// 		os.Exit(1)
+// 	}
+// 	botUsername = fmt.Sprintf("@%s", bot.Self.UserName)
+// 	log.Printf("Authorized on account %s", botUsername)
 
-	err = markov.ReadState(state)
-	if err != nil {
-		log.Printf("State file %s not present, creating a new one", state)
-	}
+// 	u := tgbotapi.NewUpdate(0)
+// 	u.Timeout = 60
+// 	updates, err := bot.GetUpdatesChan(u)
 
-	log.Printf("Loaded previous state from '%s' (%d suffixes).", state, len(markov.Chain))
+// 	markov = NewChain(plen)
 
-	trustedMap := make(map[int]bool)
-	if trustedIDs != "" {
-		ids := strings.Split(trustedIDs, ",")
-		for i := 0; i < len(ids); i += 1 {
-			j, _ := strconv.Atoi(ids[i])
-			trustedMap[j] = true
-		}
-	}
+// 	err = markov.ReadState(state)
+// 	if err != nil {
+// 		log.Printf("State file %s not present, creating a new one", state)
+// 	}
 
-	// state file save ticker
-	log.Printf("Starting state save ticker with %s interval", checkpoint.String())
-	ticker := time.NewTicker(checkpoint)
-	go func() {
-		for tick := range ticker.C {
-			if err := markov.WriteState(state); err != nil {
-				log.Printf("[state] checkpoint failed: %s (in %s)", err.Error(), time.Since(tick).String())
-				return
-			}
-			log.Printf("[state] checkpoint completed, %d suffixes in chain (in %s)", len(markov.Chain), time.Since(tick).String())
-		}
-	}()
+// 	log.Printf("Loaded previous state from '%s' (%d suffixes).", state, len(markov.Chain))
 
-	// feedback loop
-	for update := range updates {
-		go func() {
-			answerRequired = false
-			if update.Message == nil || update.Message.Text == "" {
-				return
-			}
+// 	trustedMap := make(map[int]bool)
+// 	if trustedIDs != "" {
+// 		ids := strings.Split(trustedIDs, ",")
+// 		for i := 0; i < len(ids); i += 1 {
+// 			j, _ := strconv.Atoi(ids[i])
+// 			trustedMap[j] = true
+// 		}
+// 	}
 
-			// if it's a private message, check against a list of ID
-			if update.Message.Chat.Type == "private" {
-				if trustedMap[update.Message.From.ID] {
-					log.Printf("[%s] Authorized private chat, asking: '%s'", update.Message.From.UserName, update.Message.Text)
-					answerRequired = true
-				} else {
-					// if it's not in the authorized list, do not log
-					log.Printf("[%s] Unauthorized private chat, asking: '%s'", update.Message.From.UserName, update.Message.Text)
-					return
-				}
-			}
+// 	// state file save ticker
+// 	log.Printf("Starting state save ticker with %s interval", checkpoint.String())
+// 	ticker := time.NewTicker(checkpoint)
+// 	go func() {
+// 		for tick := range ticker.C {
+// 			if err := markov.WriteState(state); err != nil {
+// 				log.Printf("[state] checkpoint failed: %s (in %s)", err.Error(), time.Since(tick).String())
+// 				return
+// 			}
+// 			log.Printf("[state] checkpoint completed, %d suffixes in chain (in %s)", len(markov.Chain), time.Since(tick).String())
+// 		}
+// 	}()
 
-			// tokenize message
-			tokens := strings.Split(update.Message.Text, " ")
+// 	// feedback loop
+// 	for update := range updates {
+// 		go func() {
+// 			answerRequired = false
+// 			if update.Message == nil || update.Message.Text == "" {
+// 				return
+// 			}
 
-			// if it's a reply, check if it's to us, answer back if necessary.
-			if update.Message.ReplyToMessage != nil && update.Message.ReplyToMessage.From.UserName == bot.Self.UserName {
-				log.Printf("[%s] Replied to us, asking: '%s'", update.Message.From.UserName, update.Message.Text)
-				answerRequired = true
-			}
+// 			// if it's a private message, check against a list of ID
+// 			if update.Message.Chat.Type == "private" {
+// 				if trustedMap[update.Message.From.ID] {
+// 					log.Printf("[%s] Authorized private chat, asking: '%s'", update.Message.From.UserName, update.Message.Text)
+// 					answerRequired = true
+// 				} else {
+// 					// if it's not in the authorized list, do not log
+// 					log.Printf("[%s] Unauthorized private chat, asking: '%s'", update.Message.From.UserName, update.Message.Text)
+// 					return
+// 				}
+// 			}
 
-			// check if we're being mentioned, answer back if necessary.
-			if strings.ToLower(tokens[0]) == strings.ToLower(botUsername) {
-				log.Printf("[%s] Mentioned us, asking: '%s'", update.Message.From.UserName, update.Message.Text)
-				// pop the first element
-				tokens = tokens[1:]
-				answerRequired = true
-			}
+// 			// tokenize message
+// 			tokens := strings.Split(update.Message.Text, " ")
 
-			if answerRequired {
-				genText, elapsed = markov.GenerateChain(numw, update.Message.Text)
-				log.Printf("[%s] Sending response: '%s' (generated in %s)", update.Message.From.UserName, genText, elapsed.String())
-				msg := tgbotapi.NewMessage(update.Message.Chat.ID, genText)
-				msg.ReplyToMessageID = update.Message.MessageID
-				bot.Send(msg)
-			}
+// 			// if it's a reply, check if it's to us, answer back if necessary.
+// 			if update.Message.ReplyToMessage != nil && update.Message.ReplyToMessage.From.UserName == bot.Self.UserName {
+// 				log.Printf("[%s] Replied to us, asking: '%s'", update.Message.From.UserName, update.Message.Text)
+// 				answerRequired = true
+// 			}
 
-			// add message to chain
-			markov.AddChain(strings.Join(tokens, " "))
-		}()
-	}
-}
+// 			// check if we're being mentioned, answer back if necessary.
+// 			if strings.ToLower(tokens[0]) == strings.ToLower(botUsername) {
+// 				log.Printf("[%s] Mentioned us, asking: '%s'", update.Message.From.UserName, update.Message.Text)
+// 				// pop the first element
+// 				tokens = tokens[1:]
+// 				answerRequired = true
+// 			}
+
+// 			if answerRequired {
+// 				genText, elapsed = markov.GenerateChain(numw, update.Message.Text)
+// 				log.Printf("[%s] Sending response: '%s' (generated in %s)", update.Message.From.UserName, genText, elapsed.String())
+// 				msg := tgbotapi.NewMessage(update.Message.Chat.ID, genText)
+// 				msg.ReplyToMessageID = update.Message.MessageID
+// 				bot.Send(msg)
+// 			}
+
+// 			// add message to chain
+// 			markov.AddChain(strings.Join(tokens, " "))
+// 		}()
+// 	}
+// }
