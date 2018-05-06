@@ -24,3 +24,11 @@
 [[constraint]]
   name = "gopkg.in/telegram-bot-api.v4"
   version = "4.6.2"
+
+[[constraint]]
+  name = "github.com/sirupsen/logrus"
+  branch = "master"
+  # revision = "778f2e774c725116edbc3d039dc0dfc1cc62aae8"
+[[constraint]]
+  name = "github.com/x-cray/logrus-prefixed-formatter"
+  version = "0.5.2"

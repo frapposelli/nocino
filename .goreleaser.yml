@@ -1,0 +1,24 @@
+# .goreleaser.yml
+builds:
+  - main: cli/main.go
+    binary: nocino
+    goos:
+      - windows
+      - darwin
+      - linux
+    goarch:
+      - amd64
+    env:
+      - CGO_ENABLED=0
+git:
+  short_hash: true
+dockers:
+  - image: frapposelli/nocino
+    goos: linux
+    goarch: amd64
+    binary: nocino
+    tag_templates:
+    - "{{ .Tag }}"
+    - "v{{ .Major }}"
+    - "v{{ .Major }}.{{ .Minor }}"
+    - latest
