@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	snowball "github.com/snowballstem/snowball/go"
 )
 
 const layout = "15:04:05.000"
@@ -69,6 +70,22 @@ func (c *Chain) GenerateChain(n int, seed string) (string, time.Duration) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	p := make(Prefix, c.prefixLen)
+	c.log.Debugf("Stemming and evaluating seed string %q", seed)
+	var candidates []string
+	for _, v := range stemString(seed) {
+		if len(v) > 3 {
+			candidates = append(candidates, v)
+		}
+	}
+	if len(candidates) > 0 {
+		for _, v := range candidates {
+			if _, ok := c.Chain[v]; ok {
+				c.log.Debugf("Found starting word to use for chain: %q", v)
+				p.Shift(v)
+				break
+			}
+		}
+	}
 	var words []string
 	for i := 0; i < n; i++ {
 		choices := c.Chain[p.String()]
@@ -143,4 +160,35 @@ func (c *Chain) RunStateSaveTicker(checkpoint time.Duration, state string) {
 		}
 	}()
 
+}
+
+// stringProcess tokenizes and stems the string
+func stemString(in string) []string {
+	var returnString []string
+	// make the string lowercase
+	loweredString := strings.ToLower(in)
+	// split the string in array of words
+	splitString := strings.Split(loweredString, " ")
+	for _, str := range splitString {
+		env := snowball.NewEnv(str)
+		// Stem the word using snowball
+		Stem(env)
+		dirty := env.Current()
+		var cln string
+		// clean the string of any chars that are not a-z A-Z and space
+		for _, v := range dirty {
+			vb := byte(v)
+			switch {
+			case vb == 32:
+				cln += string(vb)
+			case vb >= 65 && vb <= 90:
+				cln += string(vb)
+			case vb >= 97 && vb <= 122:
+				cln += string(vb)
+			}
+		}
+
+		returnString = append(returnString, cln)
+	}
+	return returnString
 }
