@@ -85,7 +85,7 @@ func (c *Chain) GenerateChain(n int, seed string) (string, time.Duration) {
 	if len(candidates) > 0 {
 		for _, v := range candidates {
 			c.log.Debugf("Evaluating word: %q", v)
-			if _, ok := c.Chain[v]; ok {
+			if _, ok := c.Chain[fmt.Sprintf(" %s", v)]; ok {
 				c.log.Debugf("Found starting word to use for chain: %q", v)
 				p.Shift(v)
 				break
