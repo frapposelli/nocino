@@ -81,18 +81,19 @@ func (c *Chain) GenerateChain(n int, seed string) (string, time.Duration) {
 			candidates = append(candidates, v)
 		}
 	}
+	var words []string
 	c.log.Debugf("Candidates found: %d", len(candidates))
 	if len(candidates) > 0 {
 		for _, v := range candidates {
 			c.log.Debugf("Evaluating word: %q", v)
 			if _, ok := c.Chain[fmt.Sprintf(" %s", v)]; ok {
 				c.log.Debugf("Found starting word to use for chain: %q", v)
+				words = append(words, v)
 				p.Shift(v)
 				break
 			}
 		}
 	}
-	var words []string
 	for i := 0; i < n; i++ {
 		choices := c.Chain[p.String()]
 		if len(choices) == 0 {
