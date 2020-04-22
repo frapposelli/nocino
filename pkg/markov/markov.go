@@ -71,14 +71,20 @@ func (c *Chain) GenerateChain(n int, seed string) (string, time.Duration) {
 	defer c.mutex.Unlock()
 	p := make(Prefix, c.prefixLen)
 	c.log.Debugf("Stemming and evaluating seed string %q", seed)
+	// TODO(frapposelli): remove hardcoded bot name
+	seed = strings.TrimPrefix(seed, "@nocino_bot")
+	seedSplit := strings.Split(seed, " ")
 	var candidates []string
-	for _, v := range stemString(seed) {
+	c.log.Debugf("Evaluating candidates %+v", seedSplit)
+	for _, v := range seedSplit {
 		if len(v) > 3 {
 			candidates = append(candidates, v)
 		}
 	}
+	c.log.Debugf("Candidates found: %d", len(candidates))
 	if len(candidates) > 0 {
 		for _, v := range candidates {
+			c.log.Debugf("Evaluating word: %q", v)
 			if _, ok := c.Chain[v]; ok {
 				c.log.Debugf("Found starting word to use for chain: %q", v)
 				p.Shift(v)
