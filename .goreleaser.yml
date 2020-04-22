@@ -1,4 +1,5 @@
 # .goreleaser.yml
+project_name: nocino
 builds:
   - main: cli/main.go
     binary: nocino
@@ -9,15 +10,20 @@ builds:
       - amd64
     env:
       - CGO_ENABLED=0
-git:
-  short_hash: true
+archives:
+  - id: github
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    format: tar.gz
+    files:
+    - LICENSE*
+    - README*      
 dockers:
-  - image: frapposelli/nocino
+  - image_templates:
+    - "frapposelli/nocino:latest"
+    - "frapposelli/nocino:{{ .Tag }}"
+    - "frapposelli/nocino:v{{ .Major }}"
     goos: linux
     goarch: amd64
-    binary: nocino
-    tag_templates:
-    - "{{ .Tag }}"
-    - "v{{ .Major }}"
-    - "v{{ .Major }}.{{ .Minor }}"
-    - latest
+    binaries:
+    - nocino
+    dockerfile: Dockerfile
