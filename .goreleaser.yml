@@ -3,7 +3,6 @@ builds:
   - main: cli/main.go
     binary: nocino
     goos:
-      - windows
       - darwin
       - linux
     goarch:
