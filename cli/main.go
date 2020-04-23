@@ -5,14 +5,16 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
 	"github.com/jamiealquiza/envy"
 	"github.com/sirupsen/logrus"
 	prefixed "github.com/x-cray/logrus-prefixed-formatter"
-	"gopkg.in/telegram-bot-api.v4"
+	tgbotapi "gopkg.in/telegram-bot-api.v4"
 
 	"github.com/frapposelli/nocino/pkg/gif"
 	"github.com/frapposelli/nocino/pkg/handler"
@@ -51,10 +53,10 @@ var log = logrus.New()
 func init() {
 	rand.Seed(time.Now().UTC().UnixNano())
 
-	customFormatter := new(prefixed.TextFormatter)
-	customFormatter.FullTimestamp = true
-	customFormatter.TimestampFormat = "2006-01-02T15:04:05"
-	log.Formatter = customFormatter
+	log.Formatter = &prefixed.TextFormatter{
+		FullTimestamp:   true,
+		TimestampFormat: "2006-01-02T15:04:05",
+	}
 
 	exe, err := os.Executable()
 	if err != nil {
@@ -63,7 +65,7 @@ func init() {
 
 	flag.IntVar(&numw, "numw", 25, "maximum number of words for the markov chain")
 	flag.IntVar(&plen, "plen", 2, "chain prefix length")
-	flag.StringVar(&state, "state", fmt.Sprintf("%s/nocino.state.gz", filepath.Dir(exe)), "state file for nocino")
+	flag.StringVar(&state, "state", fmt.Sprintf("%s/nocino.state.db", filepath.Dir(exe)), "state file for nocino")
 	flag.StringVar(&tgtoken, "token", "", "telegram bot token")
 	flag.StringVar(&gifstore, "gifstore", fmt.Sprintf("%s/gifs", filepath.Dir(exe)), "path to store GIFs")
 	flag.IntVar(&gifmaxsize, "gifmax", 1048576, "max GIF size in bytes")
@@ -86,20 +88,30 @@ func main() {
 
 	if debug {
 		log.Level = logrus.DebugLevel
+		log.SetReportCaller(true)
+		log.Formatter = &logrus.TextFormatter{
+			FullTimestamp:   true,
+			TimestampFormat: "2006-01-02T15:04:05",
+			CallerPrettyfier: func(f *runtime.Frame) (string, string) {
+				filename := path.Base(f.File)
+				return fmt.Sprintf("[%s()]", f.Function), fmt.Sprintf("[%s:%d]", filename, f.Line)
+			},
+		}
 	}
 
 	// Initialize Markov Chain
 	mchain = markov.NewChain(plen, log)
 	mchain.ReadState(state)
+	defer mchain.DB.Close()
 	// state file save ticker
-	mchain.RunStateSaveTicker(checkpoint, state)
+	// mchain.RunStateSaveTicker(checkpoint, state)
 
 	// Initialize GIF store and DB
 	gifdb = gif.NewGIFDB(gifstore, log)
 	gifdb.ReadList()
 
 	n := nocino.NewNocino(tgtoken, trustedIDs, numw, plen, gifmaxsize, log)
-	n.RunStatsTicker(mchain, gifdb)
+	n.RunStatsTicker(mchain.DB, gifdb)
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60

@@ -13,10 +13,13 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	snowball "github.com/snowballstem/snowball/go"
+	bolt "go.etcd.io/bbolt"
 )
 
-const layout = "15:04:05.000"
+const (
+	layout         = "15:04:05.000"
+	defaultMessage = "I AM NOCINO"
+)
 
 type Prefix []string
 
@@ -30,17 +33,20 @@ func (p Prefix) Shift(word string) {
 }
 
 type Chain struct {
-	Chain     map[string][]string
 	prefixLen int
 	mutex     sync.Mutex
 	log       *logrus.Entry
+	DB        *bolt.DB
+}
+
+type oldChain struct {
+	Chain map[string][]string
 }
 
 // NewChain initializes a new Chain struct.
 func NewChain(prefixLen int, logger *logrus.Logger) *Chain {
 	logfield := logger.WithField("component", "markov")
 	return &Chain{
-		Chain:     make(map[string][]string),
 		prefixLen: prefixLen,
 		log:       logfield,
 	}
@@ -57,7 +63,26 @@ func (c *Chain) AddChain(in string) (int, error) {
 		}
 		key := p.String()
 		c.mutex.Lock()
-		c.Chain[key] = append(c.Chain[key], s)
+
+		c.log.Debugf("reading key '%s' from database", key)
+		v, err := c.readDB([]byte(key))
+		if err != nil {
+			c.log.Errorf("error when reading from DB: '%s'", err)
+		}
+
+		// tossSalad takes the data, dedupes and add the new word to it
+		c.log.Debugf("tossing salad with salad length %d and ingredient '%s'", len(v), s)
+		buf, err := c.tossSalad(v, s)
+		if err != nil {
+			c.log.Errorf("error when tossing salad: '%s'", err)
+		}
+
+		c.log.Debugf("writing key '%s' to database with payload length: %d", key, len(buf))
+		err = c.writeDB([]byte(key), buf)
+		if err != nil {
+			c.log.Errorf("error when writing to DB: '%s'", err)
+		}
+
 		c.mutex.Unlock()
 		p.Shift(s)
 	}
@@ -84,9 +109,16 @@ func (c *Chain) GenerateChain(n int, seed string) (string, time.Duration) {
 	var words []string
 	c.log.Debugf("Candidates found: %d", len(candidates))
 	if len(candidates) > 0 {
-		for _, v := range candidates {
+		for _, i := range rand.Perm(len(candidates)) {
+			var found []byte
+			v := candidates[i]
 			c.log.Debugf("Evaluating word: %q", v)
-			if _, ok := c.Chain[fmt.Sprintf(" %s", v)]; ok {
+			evalW := fmt.Sprintf(" %s", v)
+			found, err := c.readDB([]byte(evalW))
+			if err != nil {
+				c.log.Errorf("error when reading from DB: '%s'", err)
+			}
+			if found != nil {
 				c.log.Debugf("Found starting word to use for chain: %q", v)
 				words = append(words, v)
 				p.Shift(v)
@@ -95,13 +127,23 @@ func (c *Chain) GenerateChain(n int, seed string) (string, time.Duration) {
 		}
 	}
 	for i := 0; i < n; i++ {
-		choices := c.Chain[p.String()]
+		var choices []string
+		c.log.Debugf("generating markov chain: reading '%s' from DB", p.String())
+		v, err := c.readDB([]byte(p.String()))
+		if err != nil {
+			c.log.Errorf("error when reading from DB: '%s'", err)
+		}
+
+		json.Unmarshal(v, &choices)
+
 		if len(choices) == 0 {
+			c.log.Debugf("we ran out of choices, breaking out of markov chain generation")
 			break
 		}
+
 		next := choices[rand.Intn(len(choices))]
 		words = append(words, next)
-		c.log.Debugf("Generating Markov chain '%v'", words)
+		c.log.Debugf("generating markov chain: words connected '%v'", words)
 		p.Shift(next)
 	}
 	return strings.Join(words, " "), time.Since(t)
@@ -109,93 +151,159 @@ func (c *Chain) GenerateChain(n int, seed string) (string, time.Duration) {
 
 // ReadState reads from a json-formatted state file.
 func (c *Chain) ReadState(fileName string) {
-	fin, err := os.Open(fileName)
-	if err != nil {
+	_, err := os.Stat(fileName)
+	if os.IsNotExist(err) {
 		c.log.Warnf("State file %s not present, creating a new one", fileName)
-		return
+		oldStateFile := fmt.Sprintf("%s.gz", strings.TrimSuffix(fileName, ".db"))
+		c.log.Warnf("Verifying if old state file exists (guessing: %s)", oldStateFile)
+		if _, err := os.Stat(oldStateFile); err == nil {
+			c.log.Warnf("Old state file exists, importing chain to new format")
+			c.ImportOldState(oldStateFile, fileName)
+		}
 	}
-	defer fin.Close()
+	bdb, err := bolt.Open(fileName, 0600, &bolt.Options{Timeout: 1 * time.Second})
+	c.DB = bdb
+
+	var bucketStats int
+	err = c.DB.Update(func(tx *bolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists([]byte("Chain"))
+		if err != nil {
+			return err
+		}
+		bucketStats = b.Stats().KeyN
+		return nil
+	})
+	if err != nil {
+		c.log.Errorf("boltdb transaction failed with: '%s'", err)
+	}
+	c.log.Infof("Loaded state from '%s' (%d suffixes).", fileName, bucketStats)
+	return
+}
+
+// ImportOldState imports old state from GZIP'd state file
+func (c *Chain) ImportOldState(oldStateFile string, newFilename string) {
+	oldState, err := os.Open(oldStateFile)
+	if err != nil {
+		c.log.Errorf("old state file '%s' was there a moment ago...", oldStateFile)
+	}
+	defer oldState.Close()
 
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	gzstream, err := gzip.NewReader(fin)
+	gzstream, err := gzip.NewReader(oldState)
 	if err != nil {
-		c.log.Warnf("Cannot open GZ stream on file %s, creating a new one", fileName)
+		c.log.Warnf("Cannot open GZ stream on file %s, skipping import", oldState.Name())
 		return
 	}
 	defer gzstream.Close()
-
+	oldc := &oldChain{
+		Chain: make(map[string][]string),
+	}
 	dec := json.NewDecoder(gzstream)
-	dec.Decode(c)
-	c.log.Infof("Loaded previous state from '%s' (%d suffixes).", fileName, len(c.Chain))
+	dec.Decode(oldc)
+
+	// Open/Create new database
+	c.log.Infof("Creating new state file at '%s'.", newFilename)
+	idb, err := bolt.Open(newFilename, 0600, &bolt.Options{Timeout: 1 * time.Second})
+	defer idb.Close()
+
+	c.log.Infof("importing previous state from '%s' (%d suffixes) to '%s'.", oldState.Name(), len(oldc.Chain), newFilename)
+	err = idb.Batch(func(tx *bolt.Tx) error {
+		c.log.Debugf("creating boltdb bucket: '%s'", "Chain")
+		b, err := tx.CreateBucket([]byte("Chain"))
+		if err != nil {
+			c.log.Errorf("error when creating new bucket in state: %s", err)
+			return err
+		}
+		for k, v := range oldc.Chain {
+			// k is property, v is slice of words
+			// deduplicate v on import
+			ddv := Deduplicate(v)
+			if len(ddv) < len(v) {
+				c.log.Debugf("deduplicated slice '%s' from %d elements to %d elements", k, len(v), len(ddv))
+			}
+			buf, err := json.Marshal(ddv)
+			if err != nil {
+				c.log.Errorf("error when marshaling %+v to bytes", ddv)
+				return err
+			}
+			b.Put([]byte(k), buf)
+		}
+		return nil
+	})
+	if err != nil {
+		c.log.Errorf("boltdb transaction failed with: '%s'", err)
+	}
 
 	return
 }
 
-// WriteState writes to a json-formatted state file.
-func (c *Chain) WriteState(fileName string) (err error) {
-	// remember that defers are LIFO
-	fout, err := os.Create(fileName)
-	if err != nil {
+func (c *Chain) readDB(key []byte) ([]byte, error) {
+	var value []byte
+	err := c.DB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("Chain"))
+		value = b.Get(key)
+		return nil
+	})
+	return value, err
+}
+
+func (c *Chain) writeDB(key, value []byte) error {
+	return c.DB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("Chain"))
+		err := b.Put(key, value)
 		return err
-	}
-	defer fout.Close()
-
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	gzstream := gzip.NewWriter(fout)
-	defer gzstream.Close()
-
-	enc := json.NewEncoder(gzstream)
-	err = enc.Encode(c)
-
-	return nil
+	})
 }
 
-func (c *Chain) RunStateSaveTicker(checkpoint time.Duration, state string) {
-	c.log.Infof("Starting state save ticker with %s interval", checkpoint.String())
-	ticker := time.NewTicker(checkpoint)
-	go func() {
-		for tick := range ticker.C {
-			if err := c.WriteState(state); err != nil {
-				c.log.WithField("elapsed", time.Since(tick).String()).Errorf("checkpoint failed: %s", err.Error())
-				return
-			}
-			c.log.WithField("elapsed", time.Since(tick).String()).Debugf("checkpoint completed, %d suffixes in chain", len(c.Chain))
+func (c *Chain) tossSalad(salad []byte, ingredient string) ([]byte, error) {
+	var wordSalad []string
+	var found bool
+	if salad != nil {
+		// if salad is not nil, we unmarshal it and look into it to see if we have to write
+		err := json.Unmarshal(salad, &wordSalad)
+		if err != nil {
+			c.log.Errorf("error when unmarshaling %+v to json, len '%d'", salad, len(salad))
+			return nil, err
 		}
-	}()
+		c.log.Debugf("fetched wordSalad with length: %d", len(wordSalad))
+		for _, v := range wordSalad {
+			if ingredient == v {
+				// we set found = true, and let it skip
+				found = true
+				break
+			}
+		}
+	} else {
+		// if salad is nil, we append the first item to it and return
+		wordSalad = append(wordSalad, ingredient)
+		c.log.Debugf("empty wordSalad, appending first item to it")
+		return json.Marshal(wordSalad)
+	}
 
+	if !found {
+		// if it wasn't found in the search, we just append to it
+		wordSalad = append(wordSalad, ingredient)
+		c.log.Debugf("appending this ingredient to wordSalad: '%s'", ingredient)
+	}
+
+	return json.Marshal(wordSalad)
 }
 
-// stringProcess tokenizes and stems the string
-func stemString(in string) []string {
-	var returnString []string
-	// make the string lowercase
-	loweredString := strings.ToLower(in)
-	// split the string in array of words
-	splitString := strings.Split(loweredString, " ")
-	for _, str := range splitString {
-		env := snowball.NewEnv(str)
-		// Stem the word using snowball
-		Stem(env)
-		dirty := env.Current()
-		var cln string
-		// clean the string of any chars that are not a-z A-Z and space
-		for _, v := range dirty {
-			vb := byte(v)
-			switch {
-			case vb == 32:
-				cln += string(vb)
-			case vb >= 65 && vb <= 90:
-				cln += string(vb)
-			case vb >= 97 && vb <= 122:
-				cln += string(vb)
-			}
-		}
-
-		returnString = append(returnString, cln)
+// Deduplicate returns a new slice with duplicates values removed.
+func Deduplicate(s []string) []string {
+	if len(s) <= 1 {
+		return s
 	}
-	return returnString
+
+	result := []string{}
+	seen := make(map[string]struct{})
+	for _, val := range s {
+		if _, ok := seen[val]; !ok {
+			result = append(result, val)
+			seen[val] = struct{}{}
+		}
+	}
+	return result
 }

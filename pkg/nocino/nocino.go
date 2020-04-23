@@ -7,10 +7,11 @@ import (
 	"time"
 
 	"github.com/frapposelli/nocino/pkg/gif"
-	"github.com/frapposelli/nocino/pkg/markov"
 
 	"github.com/sirupsen/logrus"
-	"gopkg.in/telegram-bot-api.v4"
+	"go.etcd.io/bbolt"
+	bolt "go.etcd.io/bbolt"
+	tgbotapi "gopkg.in/telegram-bot-api.v4"
 )
 
 type Nocino struct {
@@ -52,11 +53,22 @@ func NewNocino(tgtoken string, trustedIDs string, numw int, plen int, gifmaxsize
 	}
 }
 
-func (n *Nocino) RunStatsTicker(markov *markov.Chain, gifdb *gif.GIFDB) {
+func (n *Nocino) RunStatsTicker(markov *bbolt.DB, gifdb *gif.GIFDB) {
 	ticker := time.NewTicker(10 * time.Minute)
 	go func() {
 		for range ticker.C {
-			n.Log.Infof("Nocino Stats: %d Markov suffixes, %d GIF in Database", len(markov.Chain), len(gifdb.List))
+			bucketStats := 0
+			err := markov.View(func(tx *bolt.Tx) error {
+				b := tx.Bucket([]byte("Chain"))
+				if b != nil {
+					bucketStats = b.Stats().KeyN
+				}
+				return nil
+			})
+			if err != nil {
+				n.Log.Errorf("boltdb transaction failed with: '%s'", err)
+			}
+			n.Log.Infof("Nocino Stats: %d Markov suffixes, %d GIF in Database", bucketStats, len(gifdb.List))
 		}
 	}()
 }

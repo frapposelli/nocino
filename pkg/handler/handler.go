@@ -44,29 +44,16 @@ func (h *Handler) Handle() error {
 
 	h.log.Debugf("Incoming message: %#v", spew.Sdump(h.update))
 
-	switch h.update.Message.Chat.Type {
-	case "private":
-		if ok := h.checkTrustedID(h.update.Message.From.ID); !ok {
-			return nil
-		}
-		answerRequired = true
-		fallthrough
-	default:
-		answerRequired, tokens = h.processMessage()
-	}
+	answerRequired, tokens = h.processMessage()
 
 	defer h.saveMessage(tokens)
 
 	if answerRequired {
-		if dice := h.rollDice(); dice > 4 && len(h.gifdb.List) > 0 {
+		if dice := h.rollDice(); dice > 3 && len(h.gifdb.List) > 0 {
 			h.nocino.API.Send(h.fetchGIF())
 			return nil
 		}
-		if len(h.markov.Chain) > 0 {
-			h.nocino.API.Send(h.genText())
-			return nil
-		}
-		h.log.Warnf("Not replying :-( Markov chain is empty")
+		h.nocino.API.Send(h.genText())
 	}
 
 	return nil
@@ -131,10 +118,21 @@ func (h *Handler) processMessage() (answerRequired bool, tokens []string) {
 	// tokenize message
 	tokens = strings.Split(h.update.Message.Text, " ")
 
+	// if it's a private message and it's trusted, reply
+	if h.update.Message.Chat.Type == "private" {
+		if ok := h.checkTrustedID(h.update.Message.From.ID); !ok {
+			answerRequired = false
+			return
+		}
+		answerRequired = true
+		return
+	}
+
 	// if it's a reply, check if it's to us, answer back if necessary.
 	if h.update.Message.ReplyToMessage != nil && h.update.Message.ReplyToMessage.From.UserName == h.nocino.API.Self.UserName {
 		h.log.Infof("Reply to us, asking: '%s'", h.update.Message.Text)
 		answerRequired = true
+		return
 	}
 
 	// check if we're being mentioned, answer back if necessary.
@@ -143,7 +141,8 @@ func (h *Handler) processMessage() (answerRequired bool, tokens []string) {
 		tokens = tokens[1:]
 		h.log.Infof("Mention to us, asking: '%s'", strings.Join(tokens, " "))
 		answerRequired = true
+		return
 	}
 
-	return answerRequired, tokens
+	return
 }

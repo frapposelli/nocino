@@ -1,4 +1,4 @@
-# github.com/davecgh/go-spew v1.1.0
+# github.com/davecgh/go-spew v1.1.1
 ## explicit
 github.com/davecgh/go-spew/spew
 # github.com/go-telegram-bot-api/telegram-bot-api v4.6.4+incompatible
@@ -6,6 +6,8 @@ github.com/davecgh/go-spew/spew
 # github.com/jamiealquiza/envy v1.0.0
 ## explicit
 github.com/jamiealquiza/envy
+# github.com/konsorten/go-windows-terminal-sequences v1.0.1
+github.com/konsorten/go-windows-terminal-sequences
 # github.com/mattn/go-colorable v0.0.9
 ## explicit
 github.com/mattn/go-colorable
@@ -19,12 +21,9 @@ github.com/mgutz/ansi
 ## explicit
 # github.com/onsi/gomega v1.9.0
 ## explicit
-# github.com/sirupsen/logrus v1.0.6-0.20180329225952-778f2e774c72
+# github.com/sirupsen/logrus v1.5.0
 ## explicit
 github.com/sirupsen/logrus
-# github.com/snowballstem/snowball v2.0.0+incompatible
-## explicit
-github.com/snowballstem/snowball/go
 # github.com/stretchr/testify v1.5.1
 ## explicit
 # github.com/technoweenie/multipartstreamer v1.0.1
@@ -33,16 +32,15 @@ github.com/technoweenie/multipartstreamer
 # github.com/x-cray/logrus-prefixed-formatter v0.5.2
 ## explicit
 github.com/x-cray/logrus-prefixed-formatter
+# go.etcd.io/bbolt v1.3.4
+## explicit
+go.etcd.io/bbolt
 # golang.org/x/crypto v0.0.0-20180505025534-4ec37c66abab
 ## explicit
 golang.org/x/crypto/ssh/terminal
-# golang.org/x/sys v0.0.0-20191120155948-bd437916bb0e
+# golang.org/x/sys v0.0.0-20200202164722-d101bd2416d5
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# gopkg.in/airbrake/gobrake.v2 v2.0.9
-## explicit
-# gopkg.in/gemnasium/logrus-airbrake-hook.v2 v2.1.2
-## explicit
 # gopkg.in/telegram-bot-api.v4 v4.6.2
 ## explicit
 gopkg.in/telegram-bot-api.v4
